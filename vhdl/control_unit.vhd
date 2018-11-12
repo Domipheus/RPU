@@ -38,6 +38,7 @@ entity control_unit is
         O_set_idata:out STD_LOGIC;
         O_set_ipc: out STD_LOGIC;
         O_set_irpc: out STD_LOGIC;
+        O_instTick: out STD_LOGIC;
         
         -- mem controller state and control
         I_ready: in STD_LOGIC;
@@ -64,7 +65,7 @@ architecture Behavioral of control_unit is
 	signal interrupt_was_inactive: STD_LOGIC := '1';
 	signal set_idata:  STD_LOGIC := '0';
 	signal set_ipc:   STD_LOGIC := '0';
-	
+	signal instTick: STD_LOGIC := '0';
 begin
 
 	O_execute <= mem_execute;
@@ -74,6 +75,7 @@ begin
 	O_set_idata <= set_idata;
 	O_set_irpc <= set_idata;
 	O_set_ipc <= set_ipc;
+	O_instTick <= instTick;
 
 	process(I_clk)
 	begin
@@ -89,12 +91,14 @@ begin
 				set_ipc <= '0';
 				O_idata <= X"00000000";
 				set_idata <= '0';
+				instTick <= '0';
 			else
 				if I_int = '0' then
 					interrupt_was_inactive <= '1';
 				end if;
 				case s_state is
 					when "0000001" => -- fetch
+					    instTick <= '0';
 						if mem_cycles = 0 and mem_ready = '1' then
 							mem_execute <= '1';
 							mem_cycles <= 1;
@@ -133,7 +137,7 @@ begin
 							-- if it's a write, go through
 							if I_aluop(6 downto 2) = OPCODE_STORE then
 								mem_cycles <= 0;
-								s_state <= "0100001";-- "0100000"; -- WB
+								s_state <= "0100001";-- "0100000"; -- WB ----- *** fixme: Stores skip the int check?
 							elsif mem_dataReady = '1' then
 								-- if read, wait for data
 								mem_cycles <= 0;
@@ -151,8 +155,9 @@ begin
 						else
 							s_state <= "0000001"; --F
 						end if;
-					
+					   instTick <= '1';
 					when "1000000" => --  stalls
+					   instTick <= '0';
 						-- interrupt stall
 						if interrupt_state = "001" then 
 							-- give a cycle of latency

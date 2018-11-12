@@ -32,7 +32,8 @@ entity core is
         I_reset : in  STD_LOGIC;
         I_halt : in  STD_LOGIC;
         
-        -- unused interrupt interface, relic from TPU implementation
+        -- External Interrupt interface
+        I_int_data: in STD_LOGIC_VECTOR(31 downto 0);
         I_int: in STD_LOGIC;
         O_int_ack: out STD_LOGIC;
         
@@ -80,6 +81,7 @@ architecture Behavioral of core is
         O_set_idata:out STD_LOGIC;
         O_set_ipc: out STD_LOGIC;
         O_set_irpc: out STD_LOGIC;  
+        O_instTick: out STD_LOGIC;
         
         I_ready: in STD_LOGIC;
         O_execute: out STD_LOGIC;
@@ -99,8 +101,11 @@ architecture Behavioral of core is
          O_dataIMM : OUT  std_logic_vector(31 downto 0);
          O_regDwe : OUT  std_logic;
          O_aluOp : OUT  std_logic_vector(6 downto 0);
-         O_aluFunc : OUT  std_logic_vector(15 downto 0);  -- ALU function
-			O_memOp : out STD_LOGIC_VECTOR(4 downto 0)  
+         O_aluFunc : OUT  std_logic_vector(15 downto 0); 
+		 O_memOp : out STD_LOGIC_VECTOR(4 downto 0);
+	     
+         O_csrOP : out STD_LOGIC_VECTOR(4 downto 0);
+         O_csrAddr : out STD_LOGIC_VECTOR(11 downto 0)
         );
     END COMPONENT;
  
@@ -137,7 +142,26 @@ architecture Behavioral of core is
         );
     END COMPONENT;
 	 
-	 
+	COMPONENT csr_unit 
+    PORT ( 
+        I_clk : in STD_LOGIC;
+        I_en : in STD_LOGIC;
+        
+        I_dataIn : in STD_LOGIC_VECTOR(XLENM1 downto 0);
+        O_dataOut : out STD_LOGIC_VECTOR(XLENM1 downto 0);
+        
+        I_csrOp : in STD_LOGIC_VECTOR (4 downto 0);
+        I_csrAddr : in STD_LOGIC_VECTOR (11 downto 0);
+        
+        -- This unit can raise exceptions
+        O_int : out STD_LOGIC;
+        O_int_data : out STD_LOGIC_VECTOR (31 downto 0);
+        
+        I_instRetTick : in STD_LOGIC;
+        O_csr_status : out STD_LOGIC_VECTOR(XLENM1 downto 0);
+        O_csr_tvec : out STD_LOGIC_VECTOR(XLENM1 downto 0)
+    );
+    END COMPONENT;
 	 	 
     COMPONENT mem_controller
     PORT(
@@ -198,6 +222,7 @@ architecture Behavioral of core is
     signal en_fetch : std_logic := '0';
     signal en_decode : std_logic := '0';
     signal en_alu : std_logic := '0';
+    signal en_csru : std_logic := '0';
     signal en_memory : std_logic := '0';
     signal en_regwrite : std_logic := '0';
     signal en_stall : std_logic := '0';
@@ -221,6 +246,21 @@ architecture Behavioral of core is
     signal int_set_idata:  STD_LOGIC;
     signal int_enabled: std_logic;
     signal int_set_irpc:  STD_LOGIC;
+    
+    signal csru_int: STD_LOGIC;
+    signal csru_int_data: STD_LOGIC_VECTOR(XLENM1 downto 0);
+    
+    signal csru_dataIn : STD_LOGIC_VECTOR(XLENM1 downto 0);
+    signal csru_dataOut : STD_LOGIC_VECTOR(XLENM1 downto 0);
+    
+    signal csru_csrOp : STD_LOGIC_VECTOR (4 downto 0);
+    signal csru_csrAddr : STD_LOGIC_VECTOR (11 downto 0);
+
+    signal csru_instRetTick : STD_LOGIC;
+
+    -- Some CSRs are needed in various places easily, so they are distributed
+    signal csr_status : STD_LOGIC_VECTOR(XLENM1 downto 0);
+    signal csr_tvec : STD_LOGIC_VECTOR(XLENM1 downto 0);
     
     signal core_clock:STD_LOGIC := '0';
 
@@ -258,28 +298,26 @@ begin
 		O_PC => PC
 		);
 
-	control: control_unit PORT MAP (
-	       I_clk => core_clock,
-			 I_reset => I_reset,
-			 I_aluop => aluop,
-			 
-			I_int => I_int,
-			O_int_ack => O_int_ack,
-		
-			I_int_enabled => int_enabled,
-			I_int_mem_data=>MEM_I_data,
-			O_idata=> int_idata,
-			O_set_idata=> int_set_idata,
-			O_set_ipc=> PCintVec,
-			O_set_irpc => int_set_irpc,
-			 I_ready => memctl_ready,
-			 O_execute => memctl_execute,
-			 I_dataReady => memctl_dataReady,
-			 
-			 O_state => state
-			);
+	   control: control_unit PORT MAP (
+            I_clk => core_clock,
+            I_reset => I_reset,
+            I_aluop => aluop,
+            
+            I_int => I_int,
+            O_int_ack => O_int_ack,
+            I_int_enabled => int_enabled,
+            I_int_mem_data=>MEM_I_data,
+            O_idata=> int_idata,
+            O_set_idata=> int_set_idata,
+            O_set_ipc=> PCintVec,
+            O_set_irpc => int_set_irpc,
+            O_instTick => csru_instRetTick,
+            I_ready => memctl_ready,
+            O_execute => memctl_execute,
+            I_dataReady => memctl_dataReady,
+            O_state => state
+	   );
 			
-
 	   decoder: decoder_RV32 PORT MAP (
           I_clk => core_clock,
           I_en => en_decode,
@@ -291,7 +329,9 @@ begin
           O_regDwe => dataDwe,
           O_aluOp => aluOp,
           O_aluFunc => aluFunc,
-			 O_memOp => memOp
+		  O_memOp => memOp,
+          O_csrOp => csru_csrOp,
+          O_csrAddr => csru_csrAddr
         );
 		  
    alu: alu_RV32I PORT MAP (
@@ -321,6 +361,27 @@ begin
           I_selD => selD,
           I_we => reg_we
         );
+     
+    csru: csr_unit PORT MAP (
+
+        I_clk => core_clock,
+        I_en => en_csru,
+        
+        I_dataIn => csru_dataIn,
+        O_dataOut => csru_dataOut,
+        
+        I_csrOp => csru_csrOp,
+        I_csrAddr => csru_csrAddr,
+        
+        -- This unit can raise exceptions
+        O_int => csru_int,
+        O_int_data => csru_int_data,
+        
+        I_instRetTick => csru_instRetTick,
+        O_csr_status => csr_status,
+        O_csr_tvec => csr_tvec
+    );
+
 		  
     -- Register file controls
 	reg_en <= en_decode or en_regwrite;
@@ -329,7 +390,8 @@ begin
     -- These are the pipeline stage enable bits
 	en_fetch <= state(0); 
 	en_decode <= state(1); 
-	en_alu <= state(3); 
+	en_alu <= '0' when aluop = OPCODE_SYSTEM else state(3); 
+	en_csru <= state(3) when aluop = OPCODE_SYSTEM else '0'; 
 	en_memory <= state(4); 
 	en_regwrite <= state(5); 
 	en_stall <= state(6); 

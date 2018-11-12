@@ -2,7 +2,6 @@
 -- Project Name: RISC-V CPU
 -- Description: Constants for instruction forms, opcodes, conditional flags, etc.
 -- 
--- Revision: 1
 ----------------------------------------------------------------------------------
 -- Copyright 2016 Colin Riley
 --
@@ -163,6 +162,101 @@ constant F3_SYSTEM_CSRRC: std_logic_vector(2 downto 0) := "011";
 constant F3_SYSTEM_CSRRWI: std_logic_vector(2 downto 0) := "101";
 constant F3_SYSTEM_CSRRSI: std_logic_vector(2 downto 0) := "110";
 constant F3_SYSTEM_CSRRCI: std_logic_vector(2 downto 0) := "111";
+
+
+constant F3_PRIVOP: std_logic_vector(2 downto 0) := "000";
+
+constant F7_PRIVOP_URET: std_logic_vector(6 downto 0)       := "0000000";
+constant F7_PRIVOP_SRET_WFI: std_logic_vector(6 downto 0)   := "0001000";
+constant F7_PRIVOP_MRET: std_logic_vector(6 downto 0)       := "0011000";
+constant F7_PRIVOP_SFENCE_VMA: std_logic_vector(6 downto 0) := "0001001";
+
+constant RD_PRIVOP: std_logic_vector(4 downto 0) := "00000";
+
+constant R2_PRIV_RET: std_logic_vector(4 downto 0) := "00010";
+constant R2_PRIV_WFI: std_logic_vector(4 downto 0) := "00101";
+
+
+constant EXCEPTION_INT_USER_SOFTWARE:       std_logic_vector(XLEN32M1 downto 0):=  X"80000000";
+constant EXCEPTION_INT_SUPERVISOR_SOFTWARE: std_logic_vector(XLEN32M1 downto 0):=  X"80000001";
+--constant EXCEPTION_INT_RESERVED:          std_logic_vector(XLEN32M1 downto 0):=  X"80000002";
+constant EXCEPTION_INT_MACHINE_SOFTWARE:    std_logic_vector(XLEN32M1 downto 0):=  X"80000003";
+constant EXCEPTION_INT_USER_TIMER:          std_logic_vector(XLEN32M1 downto 0):=  X"80000004";
+constant EXCEPTION_INT_SUPERVISOR_TIMER:    std_logic_vector(XLEN32M1 downto 0):=  X"80000005";
+--constant EXCEPTION_INT_RESERVED:          std_logic_vector(XLEN32M1 downto 0):=  X"80000006";
+constant EXCEPTION_INT_MACHINE_TIMER:       std_logic_vector(XLEN32M1 downto 0):=  X"80000007";
+constant EXCEPTION_INT_USER_EXTERNAL:       std_logic_vector(XLEN32M1 downto 0):=  X"80000008";
+constant EXCEPTION_INT_SUPERVISOR_EXTERNAL: std_logic_vector(XLEN32M1 downto 0):=  X"80000009";
+--constant EXCEPTION_INT_RESERVED:          std_logic_vector(XLEN32M1 downto 0):=  X"8000000a";
+constant EXCEPTION_INT_MACHINE_EXTERNAL:    std_logic_vector(XLEN32M1 downto 0):=  X"8000000b";
+
+constant EXCEPTION_INSTRUCTION_ADDR_MISALIGNED: std_logic_vector(XLEN32M1 downto 0):=  X"00000000";
+constant EXCEPTION_INSTRUCTION_ACCESS_FAULT:    std_logic_vector(XLEN32M1 downto 0):=  X"00000001";
+constant EXCEPTION_INSTRUCTION_ILLEGAL:         std_logic_vector(XLEN32M1 downto 0):=  X"00000002";
+constant EXCEPTION_BREAKPOINT:                  std_logic_vector(XLEN32M1 downto 0):=  X"00000003";
+constant EXCEPTION_LOAD_ADDRESS_MISALIGNED:     std_logic_vector(XLEN32M1 downto 0):=  X"00000004";
+constant EXCEPTION_LOAD_ACCESS_FAULT:           std_logic_vector(XLEN32M1 downto 0):=  X"00000005";
+constant EXCEPTION_STORE_AMO_ADDRESS_MISALIGNED:std_logic_vector(XLEN32M1 downto 0):=  X"00000006";
+constant EXCEPTION_STORE_AMO_ACCESS_FAULT:      std_logic_vector(XLEN32M1 downto 0):=  X"00000007";
+constant EXCEPTION_ENVIRONMENT_CALL_FROM_UMODE: std_logic_vector(XLEN32M1 downto 0):=  X"00000008";
+constant EXCEPTION_ENVIRONMENT_CALL_FROM_SMODE: std_logic_vector(XLEN32M1 downto 0):=  X"00000009";
+--constant EXCEPTION_RESERVED:                  std_logic_vector(XLEN32M1 downto 0):=  X"0000000a";
+constant EXCEPTION_ENVIRONMENT_CALL_FROM_MMODE: std_logic_vector(XLEN32M1 downto 0):=  X"0000000b";
+constant EXCEPTION_INSTRUCTION_PAGE_FAULT:      std_logic_vector(XLEN32M1 downto 0):=  X"0000000c";
+constant EXCEPTION_LOAD_PAGE_FAULT:             std_logic_vector(XLEN32M1 downto 0):=  X"0000000d";
+--constant EXCEPTION_RESERVED:                  std_logic_vector(XLEN32M1 downto 0):=  X"0000000e";
+constant EXCEPTION_STORE_AMO_PAGE_FAULT:        std_logic_vector(XLEN32M1 downto 0):=  X"0000000f";
+
+constant CSR_ADDR_PRIVILEGE_BIT_START:  integer := 9;
+constant CSR_ADDR_PRIVILEGE_BIT_END:    integer := 8;
+constant CSR_ADDR_PRIVILEGE_USER:       std_logic_vector(1 downto 0):= "00";
+constant CSR_ADDR_PRIVILEGE_SUPERVISOR: std_logic_vector(1 downto 0):= "01";
+constant CSR_ADDR_PRIVILEGE_RESERVED:   std_logic_vector(1 downto 0):= "10";
+constant CSR_ADDR_PRIVILEGE_MACHINE:    std_logic_vector(1 downto 0):= "11";
+
+constant CSR_ADDR_ACCESS_BIT_START: integer := 11;
+constant CSR_ADDR_ACCESS_BIT_END:   integer := 10;
+constant CSR_ADDR_ACCESS_READONLY:  std_logic_vector(1 downto 0):= "11";
+
+
+-- CSR Opcodes:
+-- 0 - CSR Written
+-- 1 - CSR Read
+-- 2..3 0 operation
+--    01 - read or write whole XLEN
+--    10 - Set bits
+--    11 - clear bits
+-- 4 - immediate or register
+
+constant CSR_OP_BITS_WRITTEN: integer := 0;
+constant CSR_OP_BITS_READ: integer := 1;
+constant CSR_OP_BITS_OPA: integer := 2;
+constant CSR_OP_BITS_OPB: integer := 3;
+constant CSR_OP_BITS_IMM: integer := 4;
+
+constant CSR_OP_WR: std_logic_vector(4 downto 0) := "00100";
+constant CSR_OP_W:  std_logic_vector(4 downto 0) := "00101";
+constant CSR_OP_R:  std_logic_vector(4 downto 0) := "00110";
+
+constant CSR_OP_SET_WR: std_logic_vector(4 downto 0) := "01000";
+constant CSR_OP_SET_W:  std_logic_vector(4 downto 0) := "01001";
+constant CSR_OP_SET_R:  std_logic_vector(4 downto 0) := "01010";
+
+constant CSR_OP_CLEAR_WR: std_logic_vector(4 downto 0) := "01100";
+constant CSR_OP_CLEAR_W:  std_logic_vector(4 downto 0) := "01101";
+constant CSR_OP_CLEAR_R:  std_logic_vector(4 downto 0) := "01110";
+
+constant CSR_OP_IMM_WR: std_logic_vector(4 downto 0) := "10100";
+constant CSR_OP_IMM_W:  std_logic_vector(4 downto 0) := "10101";
+constant CSR_OP_IMM_R:  std_logic_vector(4 downto 0) := "10110";
+
+constant CSR_OP_IMM_SET_WR: std_logic_vector(4 downto 0) := "11000";
+constant CSR_OP_IMM_SET_W:  std_logic_vector(4 downto 0) := "11001";
+constant CSR_OP_IMM_SET_R:  std_logic_vector(4 downto 0) := "11010";
+
+constant CSR_OP_IMM_CLEAR_WR: std_logic_vector(4 downto 0) := "11100";
+constant CSR_OP_IMM_CLEAR_W:  std_logic_vector(4 downto 0) := "11101";
+constant CSR_OP_IMM_CLEAR_R:  std_logic_vector(4 downto 0) := "11110";
 
 end constants;
 

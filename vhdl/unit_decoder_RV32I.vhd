@@ -36,7 +36,9 @@ entity decoder_RV32 is
         O_regDwe : out  STD_LOGIC;                       -- RegD wrtite enable
         O_aluOp : out  STD_LOGIC_VECTOR (6 downto 0);    -- ALU opcode
         O_aluFunc : out STD_LOGIC_VECTOR (15 downto 0);  -- ALU function
-        O_memOp : out STD_LOGIC_VECTOR(4 downto 0)       -- Memory operation 
+        O_memOp : out STD_LOGIC_VECTOR(4 downto 0);      -- Memory operation 
+        O_csrOP : out STD_LOGIC_VECTOR(4 downto 0);      -- CSR operations
+        O_csrAddr : out STD_LOGIC_VECTOR(11 downto 0)    -- CSR address
     );
 end decoder_RV32;
 
@@ -50,12 +52,12 @@ begin
 	begin
 		if rising_edge(I_clk) and I_en = '1' then
 		
-      O_selD <= I_dataInst(RD_START downto RD_END);
-        
-      O_aluOp <= I_dataInst(OPCODE_START downto OPCODE_END);
+            O_selD <= I_dataInst(RD_START downto RD_END);
             
-      O_aluFunc <= "000000" & I_dataInst(FUNCT7_START downto FUNCT7_END) 
-                       & I_dataInst(FUNCT3_START downto FUNCT3_END);
+            O_aluOp <= I_dataInst(OPCODE_START downto OPCODE_END);
+                
+            O_aluFunc <= "000000" & I_dataInst(FUNCT7_START downto FUNCT7_END) 
+                           & I_dataInst(FUNCT3_START downto FUNCT3_END);
 
 			case I_dataInst(OPCODE_START downto OPCODE_END_2) is
 			  when OPCODE_LUI =>
@@ -124,15 +126,65 @@ begin
 				 else
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(7) & I_dataInst(30 downto 25) & I_dataInst(11 downto 8) & '0';
 				 end if;
-				when OPCODE_MISCMEM => 
+			  when OPCODE_MISCMEM => 
 					O_regDwe <= '0';
 				  O_memOp <= "01000";
 					O_dataIMM <= I_dataInst;
-				when others =>
-				   O_memOp <= "00000";
-					O_regDwe  <= '1';
-				   O_dataIMM <= I_dataInst(IMM_I_START downto IMM_S_B_END) 
-									& "0000000";
+			  when OPCODE_SYSTEM =>
+			       O_memOp <= "00000";
+			       if I_dataInst(FUNCT3_START downto FUNCT3_END) = "000" then
+			           -- ECALL or EBREAK
+			         
+			       else
+			           -- CSR
+			           -- The immediate output is the zero-extended R1 value for Imm-form CSR ops
+                       O_dataIMM <= X"000000" & "000" &  I_dataInst(R1_START downto R1_END);
+                       
+                       -- The 12bit immediate in the instruction forms the csr address.
+                       O_csrAddr <= I_dataInst(IMM_I_START downto IMM_I_END);
+                       
+                       -- is there a destination? if not, CSR is not read
+                       if I_dataInst(RD_START downto RD_END) = "00000" then
+                          O_csrOP(0) <= '0';
+                       else
+                          O_csrOP(0) <= '1';
+                       end if;
+                       
+                       -- is there source data? if not, CSR value is not written
+                      if I_dataInst(R1_START downto R1_END) = "00000" then
+                         O_csrOP(1) <= '0';
+                      else
+                         O_csrOP(1) <= '1';
+                      end if;
+                           
+                      O_csrOp(4 downto 2) <=  I_dataInst(FUNCT3_START downto FUNCT3_END);
+                           
+--                       -- operation          
+--                       case '0' & I_dataInst((FUNCT3_START+1) downto FUNCT3_END) is
+--                         when F3_SYSTEM_CSRRW =>
+--                            O_csrOP(3 downto 2) <= "00";
+--                          
+--                         when F3_SYSTEM_CSRRS =>
+--                            O_csrOP(3 downto 2) <= "10";
+--                            
+--                         when F3_SYSTEM_CSRRC=>
+--                            O_csrOP(3 downto 2) <= "11";
+--                            
+--                         when others =>
+--                       end case;
+--                       
+--                       -- immediate or reg source
+--                       if I_dataInst(FUNCT3_START) = '1' then
+--                          O_csrOP(4) <= '1';
+--                       else
+--                          O_csrOP(4) <= '0';
+--                       end if;
+			       end if;
+              when others =>
+                   O_memOp <= "00000";
+                    O_regDwe  <= '1';
+                   O_dataIMM <= I_dataInst(IMM_I_START downto IMM_S_B_END) 
+                                    & "0000000";
 			end case;
 		end if;
 	end process;
