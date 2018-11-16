@@ -218,6 +218,7 @@ architecture Behavioral of core is
     signal reg_we: std_logic := '0';
     
     signal registerWriteData : std_logic_vector(XLENM1 downto 0) := (others=>'0');
+    signal alu_or_csr_output : std_logic_vector(XLENM1 downto 0) := (others=>'0');
     
     signal en_fetch : std_logic := '0';
     signal en_decode : std_logic := '0';
@@ -390,8 +391,8 @@ begin
     -- These are the pipeline stage enable bits
 	en_fetch <= state(0); 
 	en_decode <= state(1); 
-	en_alu <= '0' when aluop = OPCODE_SYSTEM else state(3); 
-	en_csru <= state(3) when aluop = OPCODE_SYSTEM else '0'; 
+	en_alu <= '0' when aluop(6 downto 2) = OPCODE_SYSTEM else state(3); 
+	en_csru <= state(3) when aluop(6 downto 2) = OPCODE_SYSTEM else '0'; 
 	en_memory <= state(4); 
 	en_regwrite <= state(5); 
 	en_stall <= state(6); 
@@ -405,8 +406,11 @@ begin
     -- The input PC is just always the branch target output from ALU
 	in_pc <= branchTarget;
 	
+	-- input data from the register file, or use immediate if the OP specifies it
+	csru_dataIn <= dataIMM when csru_csrOp(CSR_OP_BITS_IMM) = '1' else dataA;
+	
 	-- The debug output just allows some internal state to be visible outside the core black box
-	O_DBG <= "000" & memctl_dataReady & "000" & MEM_I_dataReady & "0" & state & registerWriteData(15 downto 0);
+    --O_DBG <= "000" & memctl_dataReady & "000" & MEM_I_dataReady & X"0000"&"0" & state;-- & registerWriteData(15 downto 0);
 	
 	-- Below statements are for memory interface use.
 	memctl_address <= dataResult when en_memory = '1' else PC;
@@ -417,8 +421,8 @@ begin
 	memctl_size <= memOp(1 downto 0);
 	memctl_signExtend <= memOp(2);
 	
-	-- This chooses to write registers with memory data or ALU data
-	registerWriteData <= memctl_out_data when memOp(4 downto 3) = "10" else dataResult;
+	-- This chooses to write registers with memory data or ALU/csr data
+	registerWriteData <= memctl_out_data when memOp(4 downto 3) = "10" else csru_dataOut when aluop(6 downto 2) = OPCODE_SYSTEM else dataResult;
 	
 	-- The instructions are delivered from memctl
 	instruction <= memctl_out_data;

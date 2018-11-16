@@ -146,7 +146,9 @@ begin
                        -- is there a destination? if not, CSR is not read
                        if I_dataInst(RD_START downto RD_END) = "00000" then
                           O_csrOP(0) <= '0';
+                          O_regDwe <= '0';
                        else
+                          O_regDwe <= '1';
                           O_csrOP(0) <= '1';
                        end if;
                        
@@ -158,27 +160,7 @@ begin
                       end if;
                            
                       O_csrOp(4 downto 2) <=  I_dataInst(FUNCT3_START downto FUNCT3_END);
-                           
---                       -- operation          
---                       case '0' & I_dataInst((FUNCT3_START+1) downto FUNCT3_END) is
---                         when F3_SYSTEM_CSRRW =>
---                            O_csrOP(3 downto 2) <= "00";
---                          
---                         when F3_SYSTEM_CSRRS =>
---                            O_csrOP(3 downto 2) <= "10";
---                            
---                         when F3_SYSTEM_CSRRC=>
---                            O_csrOP(3 downto 2) <= "11";
---                            
---                         when others =>
---                       end case;
---                       
---                       -- immediate or reg source
---                       if I_dataInst(FUNCT3_START) = '1' then
---                          O_csrOP(4) <= '1';
---                       else
---                          O_csrOP(4) <= '0';
---                       end if;
+
 			       end if;
               when others =>
                    O_memOp <= "00000";

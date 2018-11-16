@@ -228,11 +228,15 @@ constant CSR_ADDR_ACCESS_READONLY:  std_logic_vector(1 downto 0):= "11";
 --    11 - clear bits
 -- 4 - immediate or register
 
-constant CSR_OP_BITS_WRITTEN: integer := 0;
-constant CSR_OP_BITS_READ: integer := 1;
+constant CSR_OP_BITS_READ: integer := 0;
+constant CSR_OP_BITS_WRITTEN: integer := 1;
 constant CSR_OP_BITS_OPA: integer := 2;
 constant CSR_OP_BITS_OPB: integer := 3;
 constant CSR_OP_BITS_IMM: integer := 4;
+
+constant CSR_MAINOP_WR: std_logic_vector(1 downto 0) := "01";
+constant CSR_MAINOP_SET: std_logic_vector(1 downto 0) := "10";
+constant CSR_MAINOP_CLEAR: std_logic_vector(1 downto 0) := "11";
 
 constant CSR_OP_WR: std_logic_vector(4 downto 0) := "00100";
 constant CSR_OP_W:  std_logic_vector(4 downto 0) := "00101";

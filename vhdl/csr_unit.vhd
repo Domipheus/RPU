@@ -3,7 +3,7 @@
 -- Description: CSR unit RV32I
 -- 
 ----------------------------------------------------------------------------------
--- Copyright 2016 Colin Riley
+-- Copyright 2018 Colin Riley
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -59,6 +59,10 @@ constant CSR_ADDR_CYCLEH:      STD_LOGIC_VECTOR (11 downto 0) := X"C80";
 constant CSR_ADDR_TIMEH:       STD_LOGIC_VECTOR (11 downto 0) := X"C81";
 constant CSR_ADDR_INSTRETH:    STD_LOGIC_VECTOR (11 downto 0) := X"C82";
 
+
+constant CSR_ADDR_TEST_400:     STD_LOGIC_VECTOR (11 downto 0) := X"400";
+constant CSR_ADDR_TEST_401:     STD_LOGIC_VECTOR (11 downto 0) := X"401";
+
 constant CSR_ADDR_MSTATUS:     STD_LOGIC_VECTOR (11 downto 0) := X"300";
 constant CSR_ADDR_MISA:        STD_LOGIC_VECTOR (11 downto 0) := X"301";
 constant CSR_ADDR_MEDELEG:     STD_LOGIC_VECTOR (11 downto 0) := X"302";
@@ -91,10 +95,20 @@ signal csr_instret: STD_LOGIC_VECTOR(63 downto 0) := (others => '0');
 signal csr_status : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
 signal csr_tvec : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
            
+signal curr_csr_value: STD_LOGIC_VECTOR(XLENM1 downto 0) := (others=> '0');
+signal next_csr_value: STD_LOGIC_VECTOR(XLENM1 downto 0) := (others=> '0');
+
+signal test0_CSR: STD_LOGIC_VECTOR(XLENM1 downto 0) := X"FEFbbEF0";
+signal test1_CSR: STD_LOGIC_VECTOR(XLENM1 downto 0) := X"FEFbbEF1";
+
+signal csr_op: STD_LOGIC_VECTOR(4 downto 0) := (others=>'0');
+signal opState: integer := 0;
 begin
 
     O_csr_status <= csr_status;
     O_csr_tvec <= csr_tvec;
+    
+    O_dataOut <= curr_csr_value;
 
     cycles: process (I_clk)
     begin
@@ -120,45 +134,89 @@ begin
         end if;
     end process;
         
+    -- Read data is available next cycle, with an additional cycle before another op can be processed
+    -- Write to CSR occurs 3 cycles later.
+    -- cycle 1: read of existing csr available
+    -- cycle 2: update value calculates (whole write, set/clear bit read-modify-write)
+    -- cycle 3: actual write to csr occurs.
     datamain: process (I_clk, I_en) 
     begin
-        if rising_edge(I_clk) and I_en = '1' then
-            case I_csrAddr is
-                when CSR_ADDR_MVENDORID =>
-                    O_dataOut <= X"00000000"; -- JEDEC non-commercial
-                when CSR_ADDR_MARCHID =>
-                    O_dataOut <= X"00000000";
-                when CSR_ADDR_MIMPID =>
-                    O_dataOut <= X"52505530"; -- "RPU0"
-                when CSR_ADDR_MHARDID =>
-                    O_dataOut <= X"00000000";
-                    
-                when CSR_ADDR_MISA =>
-                    O_dataOut <= X"40000080";  -- XLEN 32, RV32I
-                    
-                    
-                when CSR_ADDR_CYCLE =>
-                    O_dataOut <= csr_cycles(31 downto 0);
-                when CSR_ADDR_CYCLEH =>
-                    O_dataOut <= csr_cycles(63 downto 32);
-                    
-                when CSR_ADDR_INSTRET =>
-                    O_dataOut <= csr_cycles(31 downto 0);
-                when CSR_ADDR_INSTRETH =>
-                    O_dataOut <= csr_cycles(63 downto 32);
-                    
-                when CSR_ADDR_MCYCLE =>
-                    O_dataOut <= csr_cycles(31 downto 0);
-                when CSR_ADDR_MCYCLEH =>
-                    O_dataOut <= csr_cycles(63 downto 32);
-                    
-                when CSR_ADDR_MINSTRET =>
-                    O_dataOut <= csr_cycles(31 downto 0);
-                when CSR_ADDR_MINSTRETH =>
-                    O_dataOut <= csr_cycles(63 downto 32);
-                when others =>
-            end case;
-        end if;
+        if rising_edge(I_clk) then
+            if I_en = '1' and opState = 0 then             
+                csr_op <= I_csrOp;
+                case I_csrAddr is
+                    when CSR_ADDR_MVENDORID =>
+                        curr_csr_value <= X"00000000"; -- JEDEC non-commercial
+                    when CSR_ADDR_MARCHID =>
+                        curr_csr_value <= X"00000000";
+                    when CSR_ADDR_MIMPID =>
+                        curr_csr_value <= X"52505530"; -- "RPU0"
+                    when CSR_ADDR_MHARDID =>
+                        curr_csr_value <= X"00000000";
+                    when CSR_ADDR_MISA =>
+                        curr_csr_value <= X"40000080";  -- XLEN 32, RV32I
+                        
+                    when CSR_ADDR_CYCLE =>
+                        curr_csr_value <= csr_cycles(31 downto 0);
+                    when CSR_ADDR_CYCLEH =>
+                        curr_csr_value <= csr_cycles(63 downto 32);
+                        
+                    when CSR_ADDR_INSTRET =>
+                        curr_csr_value <= csr_instret(31 downto 0);
+                    when CSR_ADDR_INSTRETH =>
+                        curr_csr_value <= csr_instret(63 downto 32);
+                        
+                    when CSR_ADDR_MCYCLE =>
+                        curr_csr_value <= csr_cycles(31 downto 0);
+                    when CSR_ADDR_MCYCLEH =>
+                        curr_csr_value <= csr_cycles(63 downto 32);
+                        
+                    when CSR_ADDR_MINSTRET =>
+                        curr_csr_value <= csr_instret(31 downto 0);
+                    when CSR_ADDR_MINSTRETH =>
+                        curr_csr_value <= csr_instret(63 downto 32);
+                        
+                    when CSR_ADDR_TEST_400 =>
+                        curr_csr_value <= test0_CSR;
+                    when CSR_ADDR_TEST_401 =>
+                        curr_csr_value <= test1_CSR;
+
+                    when others => 
+                        -- raise exception for unsupported CSR
+                end case;
+                opState <= 1;
+                
+            elsif opState = 1 then
+                -- update stage for sets, clears and writes
+                case csr_op(3 downto 2) is
+                    when CSR_MAINOP_WR =>
+                        next_csr_value <= I_dataIn;
+                    when CSR_MAINOP_SET =>
+                        next_csr_value <= curr_csr_value or I_dataIn;
+                    when CSR_MAINOP_CLEAR =>
+                        next_csr_value <= curr_csr_value and (not I_dataIn);
+                    when others =>
+                end case;
+                
+                if I_csrOp(CSR_OP_BITS_WRITTEN) = '1' then
+                   opState <= 2;
+                else 
+                   opState <= 0;
+                end if;
+                
+            elsif opState = 2 then
+                -- write stage
+                opState <= 0;
+                case I_csrAddr is
+                      when CSR_ADDR_TEST_400 =>
+                          test0_CSR <= next_csr_value;
+                      when CSR_ADDR_TEST_401 =>
+                          test1_CSR <= next_csr_value;
+                    when others =>
+                end case;
+            end if;
+          end if;
+ 
     end process;
 
 end Behavioral;
