@@ -7,8 +7,12 @@ Please let me know if you are using any of the RPU design in your own projects! 
 
 # Implementation
 
+Diagram does not include recently added CSR unit.
+
 ![RPU Core overview](https://raw.githubusercontent.com/Domipheus/RPU/master/rpu_core_diagram.png)
 
 Implementation detail is written about via blogs available at http://labs.domipheus.com/blog/designing-a-cpu-in-vhdl-part-15-introducing-rpu/
 
-The tests in the repo are incredibly old and basic, and included only as a baseline to help. They will be expanded upon in time.
+The tests in the repo are incredibly old and basic, and included only as a baseline to help. They will be expanded upon in time. The core_tb should work for basic simulator use and could be expanded for more complex debugging.
+
+Currently working on: CSRs, Interrupts
