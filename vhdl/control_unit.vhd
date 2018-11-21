@@ -123,6 +123,8 @@ begin
 						if (I_aluop(6 downto 2) = OPCODE_LOAD or
 							 I_aluop(6 downto 2) = OPCODE_STORE) then
 							 s_state <= "0010000"; -- MEM
+					  --  elsif (I_aluop(6 downto 2) = OPCODE_SYSTEM) then
+					   --     s_state <= "1001000"; -- alu stall
 						else
 							s_state <= "0100000"; -- WB
 						end if;
@@ -161,14 +163,14 @@ begin
 						-- interrupt stall
 						if interrupt_state = "001" then 
 							-- give a cycle of latency
-							interrupt_state <= "010";
-						elsif interrupt_state = "010" then 
-							-- sample input data for state?
-							O_idata <= I_int_mem_data;
-							set_idata <= '1';
-							interrupt_state <= "100";
-						elsif interrupt_state = "100" then 
-							set_idata <= '0';
+					--		interrupt_state <= "010";
+					--	elsif interrupt_state = "010" then 
+					--		-- sample input data for state?
+					--		O_idata <= I_int_mem_data;
+					--		set_idata <= '1';
+					--		interrupt_state <= "100";
+					--	elsif interrupt_state = "100" then 
+					--		set_idata <= '0';
 							-- set PC to interrupt vector.
 							set_ipc <= '1';
 							interrupt_state <= "101";
@@ -178,7 +180,9 @@ begin
 							interrupt_state <= "000";
 							s_state <= "0000001"; --F
 						end if;
-					
+					when "1001000" =>
+					   -- alu 1 cycle stall
+					   s_state <= "0100000"; -- WB
 					when others =>
 						s_state <= "0000001";
 				end case;

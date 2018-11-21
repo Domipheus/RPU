@@ -38,7 +38,10 @@ entity decoder_RV32 is
         O_aluFunc : out STD_LOGIC_VECTOR (15 downto 0);  -- ALU function
         O_memOp : out STD_LOGIC_VECTOR(4 downto 0);      -- Memory operation 
         O_csrOP : out STD_LOGIC_VECTOR(4 downto 0);      -- CSR operations
-        O_csrAddr : out STD_LOGIC_VECTOR(11 downto 0)    -- CSR address
+        O_csrAddr : out STD_LOGIC_VECTOR(11 downto 0);   -- CSR address
+        O_int : out STD_LOGIC;                           -- is there a trap?
+        O_int_data : out STD_LOGIC_VECTOR (31 downto 0); -- trap descriptor
+        I_int_ack: in STD_LOGIC                          -- our int is now being serviced
     );
 end decoder_RV32;
 
@@ -50,6 +53,9 @@ begin
 	
 	process (I_clk, I_en)
 	begin
+	    if rising_edge(I_clk) and I_int_ack = '1' then
+	       O_int <= '0';
+	    end if;
 		if rising_edge(I_clk) and I_en = '1' then
 		
             O_selD <= I_dataInst(RD_START downto RD_END);
@@ -61,17 +67,20 @@ begin
 
 			case I_dataInst(OPCODE_START downto OPCODE_END_2) is
 			  when OPCODE_LUI =>
+			     O_int <= '0';
 				 O_regDwe <= '1';
 				 O_memOp <= "00000";
 				 O_dataIMM <= I_dataInst(IMM_U_START downto IMM_U_END) 
 								& "000000000000";
 			  when OPCODE_AUIPC =>
+			     O_int <= '0';
 				 O_regDwe <= '1';
 				 O_memOp <= "00000";
 				 O_dataIMM <= I_dataInst(IMM_U_START downto IMM_U_END) 
 								& "000000000000";
 			  when OPCODE_JAL =>
-			    if I_dataInst(RD_START downto RD_END) = "00000" then 
+			     O_int <= '0';
+			     if I_dataInst(RD_START downto RD_END) = "00000" then 
 					O_regDwe <= '0';
 				 else
 					O_regDwe <= '1';
@@ -83,7 +92,8 @@ begin
 					O_dataIMM <= "000000000000" & I_dataInst(19 downto 12) & I_dataInst(20) & I_dataInst(30 downto 21) & '0';
 				 end if;
 			  when OPCODE_JALR =>
-			    if I_dataInst(RD_START downto RD_END) = "00000" then 
+			     O_int <= '0';
+			     if I_dataInst(RD_START downto RD_END) = "00000" then 
 					O_regDwe <= '0';
 				 else
 					O_regDwe <= '1';
@@ -94,7 +104,8 @@ begin
 				 else
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(IMM_I_START downto IMM_I_END);
 				 end if;
-			  when OPCODE_OPIMM => 
+			  when OPCODE_OPIMM =>
+			     O_int <= '0'; 
 				 O_regDwe <= '1';
 				 O_memOp <= "00000";
 				 if I_dataInst(IMM_U_START) = '1' then
@@ -102,23 +113,26 @@ begin
 				 else
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(IMM_I_START downto IMM_I_END);
 				 end if;
-			  when OPCODE_LOAD => 
+			  when OPCODE_LOAD =>
+			     O_int <= '0'; 
 				 O_regDwe <= '1';
-			    O_memOp <= "10" & I_dataInst(FUNCT3_START downto FUNCT3_END);
+			     O_memOp <= "10" & I_dataInst(FUNCT3_START downto FUNCT3_END);
 				 if I_dataInst(IMM_U_START) = '1' then
 					O_dataIMM <= X"FFFF" & "1111" & I_dataInst(IMM_I_START downto IMM_I_END);
 				 else
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(IMM_I_START downto IMM_I_END);
 				 end if;
 			  when OPCODE_STORE => 
+			     O_int <= '0';
 				 O_regDwe <= '0';
-			    O_memOp <= "11" & I_dataInst(FUNCT3_START downto FUNCT3_END);
+			     O_memOp <= "11" & I_dataInst(FUNCT3_START downto FUNCT3_END);
 				 if I_dataInst(IMM_U_START) = '1' then
 					O_dataIMM <= X"FFFF" & "1111" & I_dataInst(IMM_S_A_START downto IMM_S_A_END) & I_dataInst(IMM_S_B_START downto IMM_S_B_END);
 				 else
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(IMM_S_A_START downto IMM_S_A_END) & I_dataInst(IMM_S_B_START downto IMM_S_B_END);
 				 end if;
 			  when OPCODE_BRANCH => 
+			     O_int <= '0';
 				 O_regDwe <= '0';
 				 O_memOp <= "00000";
 				 if I_dataInst(IMM_U_START) = '1' then
@@ -127,15 +141,32 @@ begin
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(7) & I_dataInst(30 downto 25) & I_dataInst(11 downto 8) & '0';
 				 end if;
 			  when OPCODE_MISCMEM => 
+			      O_int <= '0';
 					O_regDwe <= '0';
 				  O_memOp <= "01000";
 					O_dataIMM <= I_dataInst;
 			  when OPCODE_SYSTEM =>
 			       O_memOp <= "00000";
-			       if I_dataInst(FUNCT3_START downto FUNCT3_END) = "000" then
+			       if I_dataInst(FUNCT3_START downto FUNCT3_END) = F3_PRIVOP then
 			           -- ECALL or EBREAK
-			         
+			          case I_dataInst(IMM_I_START downto IMM_I_END) is
+			             when IMM_I_SYSTEM_ECALL =>
+			                 -- raise trap, save pc, perform requiredCSR operations
+			                 O_int <= '1';
+			                 O_int_data <= EXCEPTION_INT_MACHINE_SOFTWARE; 
+			                 --todo:  Priv level needs checked as to mask this to user/supervisor/machine level
+			             when IMM_I_SYSTEM_EBREAK =>
+			                 O_int <= '1';
+                             O_int_data <= EXCEPTION_BREAKPOINT;
+                             
+                         when F7_PRIVOP_MRET & R2_PRIV_RET =>
+                             O_int <= '0';
+                             O_regDwe <= '0';
+                             -- return from interrupt. implement as a branch - alu will branch to epc.
+			             when others =>
+			          end case;
 			       else
+			           O_int <= '0';
 			           -- CSR
 			           -- The immediate output is the zero-extended R1 value for Imm-form CSR ops
                        O_dataIMM <= X"000000" & "000" &  I_dataInst(R1_START downto R1_END);
@@ -163,9 +194,11 @@ begin
 
 			       end if;
               when others =>
-                   O_memOp <= "00000";
-                    O_regDwe  <= '1';
-                   O_dataIMM <= I_dataInst(IMM_I_START downto IMM_S_B_END) 
+                  O_int <= '1';
+                  O_int_data <= EXCEPTION_INSTRUCTION_ILLEGAL; 
+                  O_memOp <= "00000";
+                  O_regDwe  <= '0';
+                  O_dataIMM <= I_dataInst(IMM_I_START downto IMM_S_B_END) 
                                     & "0000000";
 			end case;
 		end if;

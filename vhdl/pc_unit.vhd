@@ -46,9 +46,9 @@ begin
 		if rising_edge(I_clk) then
 			case I_nPCop is
 				when PCU_OP_NOP => 	-- NOP, keep PC the same/halt
-					if I_intVec = '1' then -- in a NOP, you can get intterupts. check.
-						current_pc <= ADDR_INTVEC;-- set PC to interrupt vector;
-					end if;
+				--	if I_intVec = '1' then -- in a NOP, you can get intterupts. check.
+				--		current_pc <= ADDR_INTVEC;-- set PC to interrupt vector;
+				--	end if;
 				when PCU_OP_INC => 	-- increment
 					current_pc <= std_logic_vector(unsigned(current_pc) + 4); -- 32bit byte addressing
 				when PCU_OP_ASSIGN => 	-- set from external input

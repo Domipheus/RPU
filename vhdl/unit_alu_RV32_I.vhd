@@ -35,6 +35,7 @@ entity alu_RV32I is
         I_aluop : in  STD_LOGIC_VECTOR (4 downto 0);
         I_aluFunc : in STD_LOGIC_VECTOR (15 downto 0);
         I_PC : in STD_LOGIC_VECTOR (XLEN32M1 downto 0);
+        I_epc : in STD_LOGIC_VECTOR (XLENM1 downto 0);
         I_dataIMM : in  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
         O_dataResult : out  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
         O_branchTarget : out  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
@@ -159,7 +160,13 @@ begin
 				  s_branchTarget <=  std_logic_vector(signed( I_PC) + signed( I_dataIMM));
 				  s_shouldBranch <= '1';
 				  s_result(31 downto 0) <= std_logic_vector(signed( I_PC) + 4);
-				  
+				
+				when OPCODE_SYSTEM =>
+				  if I_aluFunc(9 downto 0) = F7_PRIVOP_MRET&F3_PRIVOP then
+				     s_branchTarget <=  I_epc;
+                     s_shouldBranch <= '1';
+                     s_result(31 downto 0) <= std_logic_vector(signed( I_PC) + 4);
+				  end if;
 				when OPCODE_LUI =>
 				  s_shouldBranch <= '0';
 				  s_result(31 downto 0) <= I_dataIMM;

@@ -34,8 +34,15 @@ entity csr_unit is
            O_int : out STD_LOGIC;
            O_int_data : out STD_LOGIC_VECTOR (31 downto 0);
            I_instRetTick : in STD_LOGIC;
+           -- mcause has a fast path in from other units
+           I_int_cause: in STD_LOGIC_VECTOR (XLENM1 downto 0);
+           I_int_pc: in STD_LOGIC_VECTOR (XLENM1 downto 0);
+           -- Currently just feeds machine level CSR values
            O_csr_status : out STD_LOGIC_VECTOR (XLENM1 downto 0);
-           O_csr_tvec : out STD_LOGIC_VECTOR (XLENM1 downto 0)
+           O_csr_cause : out STD_LOGIC_VECTOR (XLENM1 downto 0);
+           O_csr_ie : out STD_LOGIC_VECTOR (XLENM1 downto 0);
+           O_csr_tvec : out STD_LOGIC_VECTOR (XLENM1 downto 0);
+           O_csr_epc : out STD_LOGIC_VECTOR (XLENM1 downto 0)
            );
 end csr_unit;
 
@@ -91,9 +98,14 @@ constant CSR_ADDR_MHARDID:     STD_LOGIC_VECTOR (11 downto 0) := X"F14";
 signal csr_cycles: STD_LOGIC_VECTOR(63 downto 0) := (others => '0');
 signal csr_instret: STD_LOGIC_VECTOR(63 downto 0) := (others => '0');
 
-
-signal csr_status : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
-signal csr_tvec : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mstatus : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mie : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mtvec : STD_LOGIC_VECTOR (XLENM1 downto 0) := X"00000010";
+signal csr_mscratch : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mepc : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mcause : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mtval : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
+signal csr_mip : STD_LOGIC_VECTOR (XLENM1 downto 0) := (others => '0');
            
 signal curr_csr_value: STD_LOGIC_VECTOR(XLENM1 downto 0) := (others=> '0');
 signal next_csr_value: STD_LOGIC_VECTOR(XLENM1 downto 0) := (others=> '0');
@@ -103,10 +115,18 @@ signal test1_CSR: STD_LOGIC_VECTOR(XLENM1 downto 0) := X"FEFbbEF1";
 
 signal csr_op: STD_LOGIC_VECTOR(4 downto 0) := (others=>'0');
 signal opState: integer := 0;
+
+signal raise_int: std_logic := '0';
+
 begin
 
-    O_csr_status <= csr_status;
-    O_csr_tvec <= csr_tvec;
+    O_int <= raise_int;
+    O_int_data <= X"00000000";
+    O_csr_status <= csr_mstatus;
+    O_csr_tvec <= csr_mtvec;
+    O_csr_cause <= csr_mcause;
+    O_csr_ie <= csr_mie;
+    O_csr_epc <= csr_mepc;
     
     O_dataOut <= curr_csr_value;
 
@@ -126,10 +146,13 @@ begin
     
     protection: process (I_clk, I_en) 
     begin
-        if rising_edge(I_clk) and I_en = '1' then
+        if rising_edge(I_clk)  then
             if (I_csrAddr(CSR_ADDR_ACCESS_BIT_START downto CSR_ADDR_ACCESS_BIT_END) = CSR_ADDR_ACCESS_READONLY) and
                (I_csrOp(CSR_OP_BITS_WRITTEN) = '1') then
                --todo: raise exception
+               raise_int <= '1';
+            else
+               raise_int <= '0';  
             end if;
         end if;
     end process;
@@ -142,6 +165,14 @@ begin
     datamain: process (I_clk, I_en) 
     begin
         if rising_edge(I_clk) then
+            -- fastpath mcause write
+            if (I_int_cause /= csr_mcause) then
+                csr_mcause <= I_int_cause;
+            end if;
+            if (I_int_pc /= csr_mepc) then
+                csr_mepc <= I_int_pc;
+            end if;
+        
             if I_en = '1' and opState = 0 then             
                 csr_op <= I_csrOp;
                 case I_csrAddr is
@@ -156,6 +187,15 @@ begin
                     when CSR_ADDR_MISA =>
                         curr_csr_value <= X"40000080";  -- XLEN 32, RV32I
                         
+                    when CSR_ADDR_MSTATUS =>
+                        curr_csr_value <= csr_mstatus;
+                    when CSR_ADDR_MTVEC =>
+                        curr_csr_value <= csr_mtvec;
+                    when CSR_ADDR_MIE =>
+                        curr_csr_value <= csr_mie;
+                    when CSR_ADDR_MCAUSE =>
+                        curr_csr_value <= csr_mcause;                           
+                                                    
                     when CSR_ADDR_CYCLE =>
                         curr_csr_value <= csr_cycles(31 downto 0);
                     when CSR_ADDR_CYCLEH =>
@@ -212,6 +252,13 @@ begin
                           test0_CSR <= next_csr_value;
                       when CSR_ADDR_TEST_401 =>
                           test1_CSR <= next_csr_value;
+                          
+                      when CSR_ADDR_MSTATUS =>
+                          csr_mstatus <= next_csr_value;
+                      when CSR_ADDR_MTVEC =>
+                          csr_mtvec <= next_csr_value;
+                      when CSR_ADDR_MIE =>
+                          csr_mie <= next_csr_value;                      
                     when others =>
                 end case;
             end if;
