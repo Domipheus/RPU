@@ -113,6 +113,11 @@ begin
 				 else
 					O_dataIMM <= X"0000" & "0000" & I_dataInst(IMM_I_START downto IMM_I_END);
 				 end if;
+			  
+              when OPCODE_OP =>
+                 O_int <= '0'; 
+                 O_regDwe <= '1';
+                 O_memOp <= "00000";
 			  when OPCODE_LOAD =>
 			     O_int <= '0'; 
 				 O_regDwe <= '1';
