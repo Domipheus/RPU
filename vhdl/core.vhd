@@ -50,7 +50,7 @@ entity core is
         MEM_I_dataReady : IN  std_logic
         
         ; -- This debug output contains some internal state for debugging
-        O_DBG:out std_logic_vector(XLEN32M1 downto 0)
+        O_DBG:out std_logic_vector(63 downto 0)
 	);
 end core;
 
@@ -284,7 +284,7 @@ architecture Behavioral of core is
     
     signal int_idata:   STD_LOGIC_VECTOR(XLENM1 downto 0); 
     signal int_set_idata:  STD_LOGIC;
-    signal int_enabled: std_logic := '1';
+    signal int_enabled: std_logic := '0';
     signal int_set_irpc:  STD_LOGIC;
     
     signal csru_int: STD_LOGIC;
@@ -315,6 +315,7 @@ architecture Behavioral of core is
     signal lint_int: STD_LOGIC;
     signal lint_int_data: STD_LOGIC_VECTOR(XLENM1 downto 0);
     
+    signal dbg_data_line: STD_LOGIC_VECTOR(XLENM1 downto 0);
 begin
 	core_clock <= I_clk;
 	
@@ -493,8 +494,14 @@ begin
 	-- input data from the register file, or use immediate if the OP specifies it
 	csru_dataIn <= dataIMM when csru_csrOp(CSR_OP_BITS_IMM) = '1' else dataA;
 	
+	dbg_data_line <= registerWriteData when state(5) = '1' else  memctl_address;
 	-- The debug output just allows some internal state to be visible outside the core black box
-    --O_DBG <= "000" & memctl_dataReady & "000" & MEM_I_dataReady & X"0000"&"0" & state;-- & registerWriteData(15 downto 0);
+    O_DBG <= "0000" & "00" & memctl_dataReady  & MEM_I_dataReady & dataWriteReg & "0" & lint_reset  & lint_int & "00" & decoder_int & csru_int & "000" & aluop(6 downto 2) & "0" & state & dbg_data_line;-- & registerWriteData(15 downto 0);
+    -- byte 1 - memctrl&dataready
+    -- byte 2 - dataWriteReg, lint_reset, lint_int, decoder and csru_int
+    -- byte 3 - aluop
+    -- byte 4 - state
+    -- uint32 - data
 	
 	-- Below statements are for memory interface use.
 	memctl_address <= dataResult when en_memory = '1' else PC;

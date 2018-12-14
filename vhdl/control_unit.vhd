@@ -139,7 +139,7 @@ begin
 							-- if it's a write, go through
 							if I_aluop(6 downto 2) = OPCODE_STORE then
 								mem_cycles <= 0;
-								s_state <= "0100001";-- "0100000"; -- WB ----- *** fixme: Stores skip the int check?
+								s_state <=  "0100000"; -- WB
 							elsif mem_dataReady = '1' then
 								-- if read, wait for data
 								mem_cycles <= 0;
