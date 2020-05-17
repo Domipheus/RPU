@@ -6,7 +6,7 @@
 --  This is the CPU interface required.
 -- 
 ----------------------------------------------------------------------------------
--- Copyright 2016 Colin Riley
+-- Copyright 2018,2019,2020 Colin Riley
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ entity core is
         MEM_I_dataReady : IN  std_logic
         
         ; -- This debug output contains some internal state for debugging
+        O_halted: OUT std_logic;
         O_DBG:out std_logic_vector(63 downto 0)
 	);
 end core;
@@ -68,6 +69,7 @@ architecture Behavioral of core is
     COMPONENT control_unit 
     PORT ( 
         I_clk : in  STD_LOGIC;
+        I_halt: in STD_LOGIC;
         I_reset : in  STD_LOGIC;
         I_aluop : in  STD_LOGIC_VECTOR (6 downto 0);
         O_state : out  STD_LOGIC_VECTOR (6 downto 0);
@@ -105,6 +107,7 @@ architecture Behavioral of core is
 		 O_memOp : out STD_LOGIC_VECTOR(4 downto 0);
          O_csrOP : out STD_LOGIC_VECTOR(4 downto 0);
          O_csrAddr : out STD_LOGIC_VECTOR(11 downto 0);
+         O_trapExit: out STD_LOGIC;
          O_int : out STD_LOGIC;                          
          O_int_data : out STD_LOGIC_VECTOR (31 downto 0);
          I_int_ack: in STD_LOGIC 
@@ -126,6 +129,7 @@ architecture Behavioral of core is
          O_dataResult : out  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
          O_branchTarget : out  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
          O_dataWriteReg : out STD_LOGIC;
+         O_lastPC: out STD_LOGIC_VECTOR(XLEN32M1 downto 0);
          O_shouldBranch : out std_logic
 
     );
@@ -162,9 +166,16 @@ architecture Behavioral of core is
         
         I_instRetTick : in STD_LOGIC;
         
-       -- mcause has a fast path in from other units
-       I_int_cause: in STD_LOGIC_VECTOR (XLENM1 downto 0);
-       I_int_pc: in STD_LOGIC_VECTOR (XLENM1 downto 0);
+                   
+        -- interrupt handling causes many data dependencies
+        -- mcause has a fast path in from other units
+        I_int_cause: in STD_LOGIC_VECTOR (XLENM1 downto 0);
+        I_int_pc: in STD_LOGIC_VECTOR (XLENM1 downto 0);
+        -- We need to know when an interrupt occurs as to perform the
+        -- relevant csr modifications. Same with exit.
+        I_int_entry: IN STD_LOGIC;
+        I_int_exit: IN STD_LOGIC;
+
        -- Currently just feeds machine level CSR values
        O_csr_status : out STD_LOGIC_VECTOR (XLENM1 downto 0);
        O_csr_cause : out STD_LOGIC_VECTOR (XLENM1 downto 0);
@@ -178,6 +189,8 @@ architecture Behavioral of core is
     PORT ( 
        I_clk : in STD_LOGIC;
        I_reset : in STD_LOGIC;
+       I_nextPc : in STD_LOGIC_VECTOR (31 downto 0);
+       I_enMask : in STD_LOGIC_VECTOR (3 downto 0);
        I_pc : in STD_LOGIC_VECTOR (31 downto 0);
        I_int0 : in STD_LOGIC;
        I_int_data0 : in STD_LOGIC_VECTOR (31 downto 0);
@@ -187,8 +200,10 @@ architecture Behavioral of core is
        O_int1_ack: out STD_LOGIC;
        I_int2 : in STD_LOGIC;
        I_int_data2 : in STD_LOGIC_VECTOR (31 downto 0);
+       O_int2_ack: out STD_LOGIC;
        I_int3 : in STD_LOGIC;
        I_int_data3 : in STD_LOGIC_VECTOR (31 downto 0);
+       O_int3_ack: out STD_LOGIC;
        O_int : out STD_LOGIC;
        O_int_data : out STD_LOGIC_VECTOR (31 downto 0);
        O_int_epc : out STD_LOGIC_VECTOR (31 downto 0)
@@ -205,6 +220,7 @@ architecture Behavioral of core is
          I_address : IN  std_logic_vector(XLENM1 downto 0);
          I_data : IN  std_logic_vector(XLENM1 downto 0);
          I_dataByteEn : IN  std_logic_vector(1 downto 0);
+         I_signExtend : in STD_LOGIC;
          O_data : OUT  std_logic_vector(XLENM1 downto 0);
          O_dataReady : OUT  std_logic;
          MEM_I_ready : IN  std_logic;
@@ -250,6 +266,7 @@ architecture Behavioral of core is
     signal decoder_int: STD_LOGIC;
     signal decoder_int_data: STD_LOGIC_VECTOR(XLENM1 downto 0);
     signal decoder_int_ack: STD_LOGIC := '0';
+    signal decoder_trap_exit: STD_LOGIC := '0';
     
     
     signal reg_en: std_logic := '0';
@@ -268,6 +285,9 @@ architecture Behavioral of core is
     
     signal PC : std_logic_vector(XLENM1 downto 0) := (others => '0');
     signal PC_at_int : std_logic_vector(XLENM1 downto 0) := (others => '0');
+    signal lastPC_dec : std_logic_vector(XLENM1 downto 0) := (others => '0');
+    signal lastPC_alu : std_logic_vector(XLENM1 downto 0) := (others => '0');
+    signal nextPC_stall : std_logic_vector(XLENM1 downto 0) := (others => '0');
     
     signal memctl_ready :    std_logic;
     signal memctl_execute :   std_logic := '0';
@@ -284,8 +304,11 @@ architecture Behavioral of core is
     
     signal int_idata:   STD_LOGIC_VECTOR(XLENM1 downto 0); 
     signal int_set_idata:  STD_LOGIC;
-    signal int_enabled: std_logic := '0';
+    signal int_enabled: std_logic := '1'; --'0';
     signal int_set_irpc:  STD_LOGIC;
+    
+    signal I_int_entry: STD_LOGIC := '0';
+    signal I_int_exit: STD_LOGIC := '0';
     
     signal csru_int: STD_LOGIC;
     signal csru_int_data: STD_LOGIC_VECTOR(XLENM1 downto 0);
@@ -315,8 +338,19 @@ architecture Behavioral of core is
     signal lint_int: STD_LOGIC;
     signal lint_int_data: STD_LOGIC_VECTOR(XLENM1 downto 0);
     
+    signal lint_enable_mask : STD_LOGIC_VECTOR (3 downto 0):= (others => '0');
+    
+    signal external_int_ack : STD_LOGIC := '0';
+    
     signal dbg_data_line: STD_LOGIC_VECTOR(XLENM1 downto 0);
+    
+    signal is_illegal :std_logic:='0';
+    
+    signal should_halt: STD_LOGIC := '0';
 begin
+   
+    should_halt <=  I_halt;
+    O_halted <= should_halt;
 	core_clock <= I_clk;
 	
 	memctl: mem_controller PORT MAP (
@@ -329,6 +363,7 @@ begin
           I_address => memctl_address,
           I_data => memctl_in_data,
           I_dataByteEn => memctl_dataByteEn,
+          I_signExtend => memctl_signExtend,
           O_data => memctl_out_data,
           O_dataReady => memctl_dataReady,
 			 
@@ -353,6 +388,7 @@ begin
 	   control: control_unit PORT MAP (
             I_clk => core_clock,
             I_reset => I_reset,
+            I_halt => should_halt,
             I_aluop => aluop,
             
             I_int => lint_int,
@@ -384,6 +420,7 @@ begin
 		  O_memOp => memOp,
           O_csrOp => csru_csrOp,
           O_csrAddr => csru_csrAddr,
+          O_trapExit => decoder_trap_exit,
           -- This unit can raise exceptions
           O_int => decoder_int,
           O_int_data => decoder_int_data,
@@ -404,6 +441,7 @@ begin
           O_dataResult => dataResult,
           O_branchTarget => branchTarget,
           O_dataWriteReg => dataWriteReg,
+          O_lastPC => lastPC_alu,
           O_shouldBranch => shouldBranch
         );
 		  
@@ -440,6 +478,9 @@ begin
         I_int_cause => lint_int_data,
         I_int_pc => PC_at_int,
         
+        I_int_entry => I_int_entry,
+        I_int_exit => I_int_exit,
+        
         O_csr_status => csr_status,
         O_csr_tvec => csr_tvec,
         O_csr_cause => csr_cause,
@@ -450,22 +491,45 @@ begin
     lint: lint_unit PORT MAP (
         I_clk => core_clock,
         I_reset => lint_reset,
-        I_pc => PC,
+        I_nextPc => nextPC_stall,
+        
+        I_enMask => lint_enable_mask,
+        I_pc => lastPC_dec,
+        
         I_int0 => decoder_int,
         I_int_data0 => decoder_int_data,
         O_int0_ack => decoder_int_ack,
+        
         I_int1 => csru_int,
         I_int_data1 => csru_int_data,
         O_int1_ack => csru_int_ack,
-        I_int2 => lint_nothing,
-        I_int_data2 => lint_nothing_data,
+        
+        I_int2 => I_int,
+        I_int_data2 => I_int_data,
+        O_int2_ack => external_int_ack,
+        
+     
         I_int3 => lint_nothing,
         I_int_data3 => lint_nothing_data,
+        
         O_int => lint_int,
-        O_int_data => lint_int_data,
-        O_int_epc => PC_at_int
+        O_int_data => lint_int_data--,
+   --     O_int_epc => PC_at_int
     );
 
+O_int_ack <= external_int_ack;
+
+	state_latcher: process(core_clock)
+	begin
+	   if rising_edge(core_clock) then
+	       if en_decode = '1' then
+               lastPC_dec <= PC;
+	       end if;
+	       if state(6) = '1' then
+	           nextPC_stall <= PC;
+	       end if;
+	   end if;
+	end process;
 		  
     -- Register file controls
 	reg_en <= en_decode or en_regwrite;
@@ -474,7 +538,7 @@ begin
     -- These are the pipeline stage enable bits
 	en_fetch <= state(0); 
 	en_decode <= state(1); 
-	en_alu <= '0' when (aluop(6 downto 2) = OPCODE_SYSTEM and aluFunc(2 downto 0) /= "000") else state(3); 
+	en_alu <= state(3);
 	en_csru <= state(3) when (aluop(6 downto 2) = OPCODE_SYSTEM and aluFunc(2 downto 0) /= "000") else '0'; 
 	en_memory <= state(4); 
 	en_regwrite <= state(5); 
@@ -486,22 +550,51 @@ begin
 	        PCU_OP_INC when shouldBranch = '0' and state(5) = '1' else 
 	        PCU_OP_ASSIGN when PCintvec = '1' else
 			PCU_OP_NOP;
+			
+	-- this is lint interrupt enable for consuming the interrupt		
+	-- unused/external/crsu/decoder
+	-- Only accept external on ALU stage to prevent issues with externals taking decode int's in fetch cycles
+	-- externals are also programmable via csr register bit
+	lint_enable_mask <= '0' & (csr_status(3)and state(3)) & '1'  & '1';
+			
+    -- interrupts are controlled by mstatus.mie - this is proper control unit acceptance
+    int_enabled <= '1' when (lint_int_data(31) = '0' and lint_int = '1') else csr_status(3);
+    
+    PC_at_int <= branchTarget when (shouldBranch = '1' and lint_int_data(31) = '1' and state(6) = '1'  and lint_int = '1') else PC when (lint_int_data(31) = '1' and lint_int = '1') else lastPC_dec;
+
+    -- On Interrupt service entry, CSRs need some maintenance.
+    -- We need to strobe the CSR unit on this event.
+    I_int_entry <= PCintvec;
+    -- To detect exit, we strobe using the ALU enable with the decoder trap request bit
+    I_int_exit <= decoder_trap_exit and en_alu;
 		  
     -- The input PC is just always the branch target output from ALU
-    -- todo: tvec needs modifiec for vectored exceptions
+    -- todo: tvec needs modified for vectored exceptions
 	in_pc <= csr_tvec when PCintvec = '1' else branchTarget;
 	
 	-- input data from the register file, or use immediate if the OP specifies it
 	csru_dataIn <= dataIMM when csru_csrOp(CSR_OP_BITS_IMM) = '1' else dataA;
 	
-	dbg_data_line <= registerWriteData when state(5) = '1' else  memctl_address;
+	--dbg_data_line can be used to aid debugging cpu issues using trace dumps.
+    --dbg_data_line <= csr_tvec when memctl_execute = '1' else csru_dataIn when en_csru = '1' else registerWriteData when state(5) = '1' else X"000000" & "000" & selD when state(3) = '1' else instruction when state(1)='1' else memctl_address;
+	--dbg_data_line <= memctl_address when memctl_execute = '1' else MEM_I_data;
+    dbg_data_line <= X"ABCDEF01" when (decoder_int_data = EXCEPTION_INSTRUCTION_ILLEGAL and X"00000010" = csr_epc ) else csru_dataIn when en_csru = '1' else registerWriteData when state(5) = '1' else X"000000" & "000" & selD when state(3) = '1' else instruction when state(1)='1' else memctl_address;
+	--dbg_data_line <= PC_at_int;--registerWriteData when state(5) = '1' else X"000000" & "000" & selD when state(3) = '1' else instruction when state(1)='1' else csr_epc when ( lint_reset  = '1') else memctl_address;
+        
+    is_illegal <= '1' when decoder_int_data = EXCEPTION_INSTRUCTION_ILLEGAL else '0';    
+	
 	-- The debug output just allows some internal state to be visible outside the core black box
-    O_DBG <= "0000" & "00" & memctl_dataReady  & MEM_I_dataReady & dataWriteReg & "0" & lint_reset  & lint_int & "00" & decoder_int & csru_int & "000" & aluop(6 downto 2) & "0" & state & dbg_data_line;-- & registerWriteData(15 downto 0);
     -- byte 1 - memctrl&dataready
-    -- byte 2 - dataWriteReg, lint_reset, lint_int, decoder and csru_int
+    -- byte 2 - dataWriteReg, int_en, lint_reset, lint_int, interrupt_type_ decoder and csru_int
     -- byte 3 - aluop
     -- byte 4 - state
     -- uint32 - data
+    O_DBG <= "0000" & "00" & memctl_dataReady  & MEM_I_dataReady &
+    -- dataWriteReg & int_enabled & lint_reset  & lint_int & lint_int_data(31) & PCintvec & decoder_int & decoder_int_ack &--&csru_int & --I_int & -- 
+    dataWriteReg & int_enabled & lint_reset  & lint_int & I_int & external_int_ack & decoder_int & decoder_int_ack &--&csru_int & --I_int & -- 
+    is_illegal & "00" & aluop(6 downto 2) & 
+    "0" & state &
+    dbg_data_line;
 	
 	-- Below statements are for memory interface use.
 	memctl_address <= dataResult when en_memory = '1' else PC;
@@ -510,12 +603,14 @@ begin
 	memctl_in_data <= dataB; 
 	memctl_dataWe <= '1' when en_memory = '1' and memOp(4 downto 3) = "11" else '0';
 	memctl_size <= memOp(1 downto 0);
-	memctl_signExtend <= memOp(2);
+	memctl_signExtend <= not memOp(2);
 	
 	-- This chooses to write registers with memory data or ALU/csr data
-	registerWriteData <= memctl_out_data when memOp(4 downto 3) = "10" else csru_dataOut when aluop(6 downto 2) = OPCODE_SYSTEM else dataResult;
+	registerWriteData <= memctl_out_data when memOp(4 downto 3) = "10" else dataB when (aluop(6 downto 2) = OPCODE_STORE ) else csru_dataOut when (aluop(6 downto 2) = OPCODE_SYSTEM and aluFunc(2 downto 0) /= "000") else dataResult;
 	
 	-- The instructions are delivered from memctl
+	-- FIXME: The instruction needs LATCHED. Any change to data input at a certain time
+	-- can confuse the pipeline and get it into an inconsistent state.
 	instruction <= memctl_out_data;
 	
 end Behavioral;

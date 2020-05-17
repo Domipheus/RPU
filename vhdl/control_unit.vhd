@@ -3,7 +3,7 @@
 -- Description: control unit
 -- 
 ----------------------------------------------------------------------------------
--- Copyright 2016 Colin Riley
+-- Copyright 2016,2018,2019,2020 Colin Riley
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ entity control_unit is
     Port ( 
         I_clk : in  STD_LOGIC;
         I_reset : in  STD_LOGIC;
+        I_halt: in STD_LOGIC;
         I_aluop : in  STD_LOGIC_VECTOR (6 downto 0);
         
         -- interrupts
@@ -79,7 +80,7 @@ begin
 
 	process(I_clk)
 	begin
-		if rising_edge(I_clk) then
+		if rising_edge(I_clk) and I_halt = '0' then
 			if I_reset = '1' then
 				s_state <= "0000001";
 				next_s_state <= "0000001";
@@ -93,11 +94,11 @@ begin
 				set_idata <= '0';
 				instTick <= '0';
 			else
-				if I_int = '0' then
-					interrupt_was_inactive <= '1';
-				end if;
 				case s_state is
 					when "0000001" => -- fetch
+					     if I_int = '0' then
+                            interrupt_was_inactive <= '1';
+                        end if;
 					    instTick <= '0';
 						if mem_cycles = 0 and mem_ready = '1' then
 							mem_execute <= '1';
@@ -114,21 +115,28 @@ begin
 							end if;
 						end if;
 					when "0000010" => --- decode
+                                                 if I_int = '0' then
+                                                    interrupt_was_inactive <= '1';
+                                                end if;
 						s_state <= "0001000"; --E "0000100"; --R
 					when "0000100" => -- read -- DEPRECATED STAGE
 						s_state <= "0001000"; --E
 					when "0001000" => -- execute
+                                                 if I_int = '0' then
+                                                    interrupt_was_inactive <= '1';
+                                                end if;
 						--MEM/WB
 						-- if it's not a memory alu op, goto writeback
 						if (I_aluop(6 downto 2) = OPCODE_LOAD or
 							 I_aluop(6 downto 2) = OPCODE_STORE) then
 							 s_state <= "0010000"; -- MEM
-					  --  elsif (I_aluop(6 downto 2) = OPCODE_SYSTEM) then
-					   --     s_state <= "1001000"; -- alu stall
 						else
 							s_state <= "0100000"; -- WB
 						end if;
 					when "0010000" => -- mem
+                                                 if I_int = '0' then
+                                                    interrupt_was_inactive <= '1';
+                                                end if;
 					-- sometimes memory can be busy, if so we need to relook here
 						if mem_cycles = 0 and mem_ready = '1' then
 								mem_execute <= '1';
@@ -155,28 +163,31 @@ begin
 							next_s_state <= "0000001"; --F
 							s_state <= "1000000"; --F
 						else
+                            if I_int = '0' then
+                                interrupt_was_inactive <= '1';
+                            end if;
 							s_state <= "0000001"; --F
 						end if;
 					   instTick <= '1';
 					when "1000000" => --  stalls
+                                                if I_int = '0' then
+                                                   interrupt_was_inactive <= '1';
+                                               end if;
 					   instTick <= '0';
 						-- interrupt stall
 						if interrupt_state = "001" then 
 							-- give a cycle of latency
-					--		interrupt_state <= "010";
-					--	elsif interrupt_state = "010" then 
-					--		-- sample input data for state?
-					--		O_idata <= I_int_mem_data;
-					--		set_idata <= '1';
-					--		interrupt_state <= "100";
-					--	elsif interrupt_state = "100" then 
-					--		set_idata <= '0';
 							-- set PC to interrupt vector.
+							
 							set_ipc <= '1';
-							interrupt_state <= "101";
-						elsif interrupt_state = "101" then
-							set_ipc <= '0';
-							interrupt_ack <= '0';
+                            interrupt_state <= "101";
+                            
+                         --   interrupt_ack <= '0';
+                        elsif interrupt_state = "101" then
+                            set_ipc <= '0';
+                            interrupt_ack <= '0';
+							interrupt_state <= "111";
+						elsif interrupt_state = "111" then
 							interrupt_state <= "000";
 							s_state <= "0000001"; --F
 						end if;

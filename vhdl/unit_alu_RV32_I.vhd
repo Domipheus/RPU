@@ -3,7 +3,7 @@
 -- Description: ALU unit suitable for RV32I operational use
 -- 
 ----------------------------------------------------------------------------------
--- Copyright 2016 Colin Riley
+-- Copyright 2016,2018,2019,2020  Colin Riley
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ entity alu_RV32I is
         O_dataResult : out  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
         O_branchTarget : out  STD_LOGIC_VECTOR (XLEN32M1 downto 0);
         O_dataWriteReg : out STD_LOGIC;
+        O_lastPC: out STD_LOGIC_VECTOR(XLEN32M1 downto 0);
         O_shouldBranch : out std_logic
     );
 end alu_RV32I;
@@ -51,11 +52,13 @@ architecture Behavioral of alu_RV32I is
     signal s_branchTarget : STD_LOGIC_VECTOR (XLEN32M1 downto 0) := (others => '0');
     signal s_result: STD_LOGIC_VECTOR(XLEN32M1+2 downto 0) := (others => '0');
     signal s_shouldBranch: STD_LOGIC := '0';
+    signal s_lastPC: STD_LOGIC_VECTOR(XLEN32M1 downto 0) := (others => '0');
 begin
 
 	process (I_clk, I_en) 
 	begin
 		if rising_edge(I_clk) and I_en = '1' then
+		   s_lastPC <= I_PC;
 		   O_dataWriteReg <= I_dataDwe;
 			case I_aluop is
 			   when OPCODE_OPIMM =>
@@ -166,6 +169,9 @@ begin
 				     s_branchTarget <=  I_epc;
                      s_shouldBranch <= '1';
                      s_result(31 downto 0) <= std_logic_vector(signed( I_PC) + 4);
+                  elsif I_aluFunc(2 downto 0) /= F3_PRIVOP then
+                    -- do not branch on CSR unit work
+                    s_shouldBranch <= '0';
 				  end if;
 				when OPCODE_LUI =>
 				  s_shouldBranch <= '0';
@@ -232,5 +238,6 @@ begin
 	O_dataResult <= s_result(XLEN32M1 downto 0);
 	O_shouldBranch <= s_shouldBranch;
 	O_branchTarget <= s_branchTarget;
+	O_lastPC <= s_lastPC;
 	
 end Behavioral;
