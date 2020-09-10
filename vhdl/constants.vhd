@@ -149,6 +149,24 @@ constant F7_OP_OR: std_logic_vector(6 downto 0) := "0000000";
 constant F3_OP_AND: std_logic_vector(2 downto 0) := "111";
 constant F7_OP_AND: std_logic_vector(6 downto 0) := "0000000";
 
+-- RV32M Extension
+constant F7_OP_M_EXT: std_logic_vector(6 downto 0) := "0000001";
+constant F3_OP_M_MUL: std_logic_vector(2 downto 0) := "000";
+constant F3_OP_M_MULH: std_logic_vector(2 downto 0) := "001";
+constant F3_OP_M_MULHSU: std_logic_vector(2 downto 0) := "010";
+constant F3_OP_M_MULHU: std_logic_vector(2 downto 0) := "011";
+constant F3_OP_M_DIV: std_logic_vector(2 downto 0) := "100";
+constant F3_OP_M_DIVU: std_logic_vector(2 downto 0) := "101";
+constant F3_OP_M_REM: std_logic_vector(2 downto 0) := "110";
+constant F3_OP_M_REMU: std_logic_vector(2 downto 0) := "111";
+
+-- bit 0 of the OP definitions denote unsigned ops; same as above
+constant ALU_INT32_DIV_OP_UNSIGNED_BIT: integer := 0;
+constant ALU_INT32_DIV_OP_DIV: std_logic_vector(1 downto 0) := "00";
+constant ALU_INT32_DIV_OP_DIVU: std_logic_vector(1 downto 0) := "01";
+constant ALU_INT32_DIV_OP_REM: std_logic_vector(1 downto 0) := "10";
+constant ALU_INT32_DIV_OP_REMU: std_logic_vector(1 downto 0) := "11";
+
 constant F3_MISCMEM_FENCE: std_logic_vector(2 downto 0) := "000";
 constant F3_MISCMEM_FENCEI: std_logic_vector(2 downto 0) := "001";
 
@@ -261,6 +279,8 @@ constant CSR_OP_IMM_SET_R:  std_logic_vector(4 downto 0) := "11010";
 constant CSR_OP_IMM_CLEAR_WR: std_logic_vector(4 downto 0) := "11100";
 constant CSR_OP_IMM_CLEAR_W:  std_logic_vector(4 downto 0) := "11101";
 constant CSR_OP_IMM_CLEAR_R:  std_logic_vector(4 downto 0) := "11110";
+
+
 
 end constants;
 
