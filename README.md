@@ -3,7 +3,9 @@ Basic RISC-V CPU implementation in VHDL.
 
 This is a RV32IMZcsr ISA CPU implementation, based off of my TPU CPU design. It is very simple, but has run rv32i-compiled GCC toolchain binaries at over 200MHz on a Digilent Arty S7-50 board, built with Xilinx Spartan 7 tools. 
 
-When used in the ArtyS7-RPU-SoC can run DooM timedemo3 at ~8fps, and boot operating systems such as Zephyr RTOS.
+When used in the ArtyS7-RPU-SoC @ 100MHZ it can run DooM timedemo3 at ~8fps, and boot operating systems such as Zephyr RTOS.
+
+The Wiki will have more in depth information: https://github.com/Domipheus/RPU/wiki
 
 Please let me know if you are using any of the RPU design in your own projects! I am contactable on twitter @domipheus.
 
